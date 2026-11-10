@@ -164,15 +164,21 @@ async def fly(args, drone, frames, K, dist):
             print("waiting for position health...")
             await asyncio.sleep(1)
         await t.ready()
-        frame, _ = frames.get()
-        if frame is None or marker_offset(frame, K, dist, args.marker_id, args.marker_size) is None:
+        frame, stamp = frames.get()
+        if (frame is None or time.monotonic() - stamp > 1.0
+                or marker_offset(frame, K, dist, args.marker_id, args.marker_size) is None):
             raise RuntimeError("marker not visible on the ground; aborting before arm")
 
         # 2. takeoff
         await drone.param.set_param_float("MIS_TAKEOFF_ALT", args.alt)
         await drone.action.arm()
         await drone.action.takeoff()
+        climb_start = time.monotonic()
         while abs(t.rel_alt - args.alt) > 0.3:
+            if t.mode.name not in ("TAKEOFF", "HOLD"):
+                raise PilotTookOver(f"flight mode is {t.mode.name}")
+            if time.monotonic() - climb_start > 30:
+                raise RuntimeError("takeoff timed out")
             await asyncio.sleep(0.2)
         print(f"at {t.rel_alt:.1f} m")
 
@@ -217,6 +223,9 @@ async def fly(args, drone, frames, K, dist):
         print(f"pilot took over: {ex}; exiting without further commands")
         return
     except (Exception, asyncio.CancelledError, KeyboardInterrupt) as ex:
+        if t.mode is not None and t.mode.name in ("POSCTL", "ALTCTL", "MANUAL", "STABILIZED", "ACRO"):
+            print(f"ABORT: {ex!r}; pilot has control ({t.mode.name}), sending nothing")
+            return
         print(f"ABORT: {ex!r}; landing in place")
         try:
             await drone.offboard.stop()
