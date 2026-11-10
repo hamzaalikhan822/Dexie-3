@@ -113,6 +113,7 @@ class PilotTookOver(Exception):
 
 
 MANUAL = {"MANUAL", "ALTCTL", "POSCTL", "STABILIZED", "ACRO", "RATTITUDE"}
+FAILSAFE = {"RETURN_TO_LAUNCH", "LAND"}
 
 
 def link_lost(t):
@@ -192,7 +193,7 @@ async def fly(args, drone, frames, K, dist):
         await drone.action.takeoff()
         climb_start = time.monotonic()
         while abs(t.rel_alt - args.alt) > 0.3:
-            if t.mode.name in MANUAL:
+            if t.mode.name in MANUAL or t.mode.name in FAILSAFE:
                 raise PilotTookOver(f"flight mode is {t.mode.name}")
             if time.monotonic() - climb_start > 30:
                 raise RuntimeError("takeoff timed out")
@@ -248,8 +249,8 @@ async def fly(args, drone, frames, K, dist):
         if link_lost(t):
             print(f"ABORT: {ex!r}; link lost, sending nothing (PX4 failsafe)")
             return
-        if t.mode is not None and t.mode.name in MANUAL:
-            print(f"ABORT: {ex!r}; pilot has control ({t.mode.name}), sending nothing")
+        if t.mode is not None and (t.mode.name in MANUAL or t.mode.name in FAILSAFE):
+            print(f"ABORT: {ex!r}; pilot or PX4 failsafe has control ({t.mode.name}), sending nothing")
             return
         print(f"ABORT: {ex!r}; landing in place")
         try:
