@@ -5,3 +5,4 @@ camera.yaml
 *.jpg
 *.png
 .superpowers/
+.venv/
