@@ -39,7 +39,7 @@ git init
 
 `requirements.txt`:
 ```
-mavsdk>=2.0
+mavsdk>=2.0,<4
 opencv-contrib-python>=4.8
 numpy
 pyyaml
