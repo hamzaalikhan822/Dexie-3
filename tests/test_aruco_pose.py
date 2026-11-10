@@ -30,6 +30,11 @@ def test_marker_right_of_centre_gives_positive_x():
     assert x > 0.1 and abs(y) < 0.02
 
 
+def test_marker_below_centre_gives_positive_y():
+    x, y, z = marker_offset(synthetic_frame(cy=340), K, DIST, 0, 0.35)
+    assert y > 0.1 and abs(x) < 0.02
+
+
 def test_missing_marker_returns_none():
     frame = np.full((480, 640, 3), 255, dtype=np.uint8)
     assert marker_offset(frame, K, DIST, 0, 0.35) is None

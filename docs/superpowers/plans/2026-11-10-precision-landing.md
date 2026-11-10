@@ -646,7 +646,7 @@ async def fly(args, drone, frames, K, dist):
         turned = 0.0
         while turned < 360:
             check_offboard(t)
-            turned += 10
+            turned += 1
             await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, (start_yaw + turned) % 360))
             await asyncio.sleep(0.1)
         for _ in range(20):

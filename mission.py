@@ -78,6 +78,7 @@ class Telem:
         self.yaw = None          # degrees
         self.mode = None
         self.in_air = None
+        self.att_stamp = None    # monotonic time of the last attitude update
         self.tasks = [asyncio.create_task(c) for c in (
             self._pos(drone), self._ned(drone), self._att(drone), self._mode(drone), self._air(drone))]
 
@@ -92,6 +93,7 @@ class Telem:
     async def _att(self, d):
         async for a in d.telemetry.attitude_euler():
             self.yaw = a.yaw_deg
+            self.att_stamp = time.monotonic()
 
     async def _mode(self, d):
         async for m in d.telemetry.flight_mode():
@@ -110,8 +112,19 @@ class PilotTookOver(Exception):
     pass
 
 
+MANUAL = {"MANUAL", "ALTCTL", "POSCTL", "STABILIZED", "ACRO", "RATTITUDE"}
+
+
+def link_lost(t):
+    """A telemetry task died, or attitude (10+ Hz) has been silent for 2 s."""
+    return (any(x.done() for x in t.tasks)
+            or t.att_stamp is None or time.monotonic() - t.att_stamp > 2.0)
+
+
 def check_offboard(t):
-    """Raise if the RC pilot switched PX4 out of OFFBOARD."""
+    """Raise if the RC pilot switched PX4 out of OFFBOARD or the link dropped."""
+    if link_lost(t):
+        raise PilotTookOver("link lost")
     if t.mode.name != "OFFBOARD":
         raise PilotTookOver(f"flight mode is {t.mode.name}")
 
@@ -123,13 +136,15 @@ async def centre_and_descend(args, drone, frames, K, dist, t, descend):
     """
     from mavsdk.offboard import VelocityBodyYawspeed
     settled_since = None
-    last_seen = time.monotonic()
+    start = last_seen = time.monotonic()
     while True:
         check_offboard(t)
         frame, stamp = frames.get()
         off = (None if frame is None or time.monotonic() - stamp > 1.0
                else marker_offset(frame, K, dist, args.marker_id, args.marker_size))
         now = time.monotonic()
+        if not descend and now - start > 30:
+            raise RuntimeError("centre timed out")
         if off is not None:
             last_seen = now
             fwd, right = offset_to_velocity(off, args.kp, args.vmax, args.cam_yaw)
@@ -156,6 +171,7 @@ async def centre_and_descend(args, drone, frames, K, dist, t, descend):
 async def fly(args, drone, frames, K, dist):
     from mavsdk.offboard import OffboardError, PositionNedYaw
     t = Telem(drone)
+    armed = False
     try:
         # 1. connect and check
         async for h in drone.telemetry.health():
@@ -171,11 +187,12 @@ async def fly(args, drone, frames, K, dist):
 
         # 2. takeoff
         await drone.param.set_param_float("MIS_TAKEOFF_ALT", args.alt)
+        armed = True
         await drone.action.arm()
         await drone.action.takeoff()
         climb_start = time.monotonic()
         while abs(t.rel_alt - args.alt) > 0.3:
-            if t.mode.name not in ("TAKEOFF", "HOLD"):
+            if t.mode.name in MANUAL:
                 raise PilotTookOver(f"flight mode is {t.mode.name}")
             if time.monotonic() - climb_start > 30:
                 raise RuntimeError("takeoff timed out")
@@ -201,9 +218,10 @@ async def fly(args, drone, frames, K, dist):
         turned = 0.0
         while turned < 360:
             check_offboard(t)
-            turned += 10
+            turned += 1
             await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, (start_yaw + turned) % 360))
             await asyncio.sleep(0.1)
+        print(f"sweep done, measured yaw delta {heading_delta(start_yaw, t.yaw):.0f} deg")
         for _ in range(20):
             check_offboard(t)
             await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, start_yaw))
@@ -211,8 +229,9 @@ async def fly(args, drone, frames, K, dist):
         print(f"rotation done, heading {t.yaw:.0f} deg (delta {heading_delta(start_yaw, t.yaw):.0f})")
 
         # 4. centre, 5. descend
-        await centre_and_descend(args, drone, frames, K, dist, t, descend=False)
-        print("centred")
+        if args.kp > 0:
+            await centre_and_descend(args, drone, frames, K, dist, t, descend=False)
+            print("centred")
         await centre_and_descend(args, drone, frames, K, dist, t, descend=True)
         print(f"below 1 m at {t.rel_alt:.2f} m, landing")
 
@@ -223,7 +242,13 @@ async def fly(args, drone, frames, K, dist):
         print(f"pilot took over: {ex}; exiting without further commands")
         return
     except (Exception, asyncio.CancelledError, KeyboardInterrupt) as ex:
-        if t.mode is not None and t.mode.name in ("POSCTL", "ALTCTL", "MANUAL", "STABILIZED", "ACRO"):
+        if not armed:
+            print(f"ABORT before arm: {ex!r}; sending nothing")
+            return
+        if link_lost(t):
+            print(f"ABORT: {ex!r}; link lost, sending nothing (PX4 failsafe)")
+            return
+        if t.mode is not None and t.mode.name in MANUAL:
             print(f"ABORT: {ex!r}; pilot has control ({t.mode.name}), sending nothing")
             return
         print(f"ABORT: {ex!r}; landing in place")
@@ -231,7 +256,15 @@ async def fly(args, drone, frames, K, dist):
             await drone.offboard.stop()
         except Exception:
             pass
-        await drone.action.land()
+        for _ in range(2):
+            try:
+                await drone.action.land()
+                break
+            except Exception:
+                await asyncio.sleep(1)
+        else:
+            print("VEHICLE IN HOLD - PILOT TAKE OVER")
+            return
     while t.in_air:
         await asyncio.sleep(0.5)
     try:
@@ -273,10 +306,7 @@ async def main():
     if args.dry:
         await dry_run(args, drone, frames, K, dist)
     else:
-        try:
-            await fly(args, drone, frames, K, dist)
-        except KeyboardInterrupt:
-            await drone.action.land()
+        await fly(args, drone, frames, K, dist)
 
 
 if __name__ == "__main__":

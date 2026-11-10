@@ -65,7 +65,7 @@ Flight sequence, run with `asyncio` and MAVSDK:
 2. **Takeoff**: set `MIS_TAKEOFF_ALT` to `--alt`, arm, `action.takeoff()`, wait
    until relative altitude is within 0.3 m of target.
 3. **Rotate 360°**: start offboard with `PositionNedYaw` at the current NED
-   position. Advance the yaw setpoint 10° every 0.1 s (about 36 s per turn) until
+   position. Advance the yaw setpoint 1° every 0.1 s (about 36 s per turn) until
    it has moved 360°, then hold the original heading for 2 s. Yaw-rate is kept
    low so the camera stays usable.
 4. **Centre**: loop at ~10 Hz. Get the latest frame, call `marker_offset`. Map
