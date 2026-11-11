@@ -35,7 +35,8 @@ def parse_args(argv=None):
                    help="after the 360, return to this height over the takeoff spot before looking for the tag")
     p.add_argument("--kp", type=float, default=0.5)
     p.add_argument("--vmax", type=float, default=0.3)
-    p.add_argument("--cam-yaw", type=float, default=0.0, help="deg, camera image-up vs nose")
+    p.add_argument("--cam-yaw", type=float, default=180.0,
+                   help="deg, camera image-up vs nose; 180 measured on DEXI 3 (both axes flipped)")
     p.add_argument("--dry", action="store_true", help="connect and print offsets, never arm")
     args = p.parse_args(argv)
     args.dict = getattr(cv2.aruco, args.dict)

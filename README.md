@@ -59,9 +59,10 @@ Each step needs an RC pilot on the sticks with a mode switch set to Position mod
 at any time kicks PX4 out of OFFBOARD; the script notices and exits. Before each run, have the RC mode switch in Position mode and the vehicle in HOLD/Loiter, not in a manual mode, because the script treats a manual mode seen during the climb as a pilot takeover and exits.
 
 1. Bench: `python mission.py --dry` (or `python ui.py` and Connect). Check frame age < 0.5 s and the marker is seen.
-2. Hand-held: lift the drone 1 m. Moving it right must make `right` negative; moving it forward must
-   make `fwd` negative. If the wrong axis changes or a sign is wrong, try `--cam-yaw 90`, `-90` or `180`
-   until both are correct. Keep that flag for every run.
+2. Hand-held: lift the drone 1 m, move it right: only `right` must change, and go negative; move it
+   forward: only `fwd` must change, and go negative. On the DEXI 3 used here the camera is mounted
+   rotated 180° (both went positive at 0), so the default `--cam-yaw` is 180. If your readings differ,
+   try 0, 90 or -90 until both are correct, and keep that value for every run.
 3. `python mission.py --alt 2 --kp 0` : takeoff, yaw, straight descent, land.
 4. `python mission.py --alt 2` : full loop at 2 m.
 5. `python mission.py --alt 5` : the real thing.

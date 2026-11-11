@@ -48,7 +48,7 @@ class App:
                 ("alt", "Altitude m", "5"),
                 ("acquire_alt", "Acquire alt m", "1.5"),
                 ("kp", "Kp", "0.5"),
-                ("cam_yaw", "Cam yaw deg", "0"),
+                ("cam_yaw", "Cam yaw deg", "180"),
                 ("marker_size", "Tag size m", "0.14"),
                 ("dict", "Tag dictionary", "DICT_APRILTAG_36h11")]):
             ttk.Label(form, text=label).grid(row=i, column=0, sticky="w")
