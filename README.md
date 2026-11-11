@@ -27,9 +27,12 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
    - The stock DEXI 3 camera is forward-facing. This project needs it pointing down at the marker.
    - DEXI 3 has no GPS. Altitude comes from PX4's local estimate (optical flow + downward range
      sensor) and the mission only arms once PX4 reports "local position OK", shown in the window.
-4. Calibrate once, at the same stream resolution the mission uses:
-   `python calibrate.py --cols 9 --rows 6 --square 0.025`
-   Capture ~20 frames with the board at different tilts and positions. Reprojection error should be < 1 px.
+4. Camera model: `python calibrate.py --nominal` writes `camera.yaml` with the focal length measured
+   on DEXI 3 (878 px at 640x480: the stream is a tighter crop than the full sensor), centre at the
+   image middle, no distortion. That is enough for the closed-loop landing. To check it on your unit:
+   hold the drone still over the pad, measure lens-to-pad distance, and compare with the `z` the
+   window shows; they should agree within a few cm. A full calibration with a printed checkerboard
+   (`python calibrate.py --cols 9 --rows 6 --square 0.022`) also models lens distortion.
 
 ### PX4 failsafe
 

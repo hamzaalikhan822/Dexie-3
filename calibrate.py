@@ -27,7 +27,7 @@ def tag_object_points(size_m):
     return np.array([[0, 0, 0], [size_m, 0, 0], [size_m, size_m, 0], [0, size_m, 0]], np.float32)
 
 
-NOMINAL_FX = 632.0  # Pi Camera Module 3 streamed at 640x480 (sensor mode 2304x1296); DEXI's own file says 635
+NOMINAL_FX = 878.0  # measured on DEXI 3: 14 cm tag = 260.8 px at 0.47 m and 173.4 px at 0.71 m (640x480 stream)
 
 
 def nominal(size, fx=NOMINAL_FX):
