@@ -8,12 +8,11 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
 
 1. `pip install -r requirements.txt`
    The `mavsdk` package is pinned below version 4 because this code uses the gRPC MAVSDK-Python API (the pip package was renamed `mavsdk-grpc`; versions 4 and up are a different native binding and will not work).
-2. Marker: ArUco `DICT_4X4_50`, id 0, printed **35 cm** square on matte paper/board, white border
-   at least 5 cm. Generate with:
-   ```
-   python -c "import cv2;cv2.imwrite('marker0.png',cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50),0,1000))"
-   ```
-   If the marker is not detected from 5 m in `--dry`, print 50 cm and pass `--marker-size 0.5`.
+2. Marker: the DroneBlocks **DEXI landing pad** sheet (AprilTag 36h11, id 0, black square 14.0 cm),
+   taped flat. These are the defaults (`--dict DICT_APRILTAG_36h11 --marker-id 0 --marker-size 0.14`).
+   A 14 cm tag is only detectable from about 2 m down with the 640x480 camera, so after the 360° the
+   mission first returns to `--acquire-alt` (1.5 m) over the takeoff spot on PX4's position estimate,
+   then starts looking for the tag. A larger print of the same tag lets you raise that altitude.
 3. Connect to DEXI 3 (Raspberry Pi CM5 companion, DEXI OS):
    - Power the drone. Join its Wi-Fi hotspot `dexi_XXXX` (XXXX = last 4 of its MAC), password `droneblocks`.
    - The Pi is `192.168.4.1`. Dashboard: http://192.168.4.1 (check the camera shows there). SSH: `ssh dexi@192.168.4.1`, password `dexi`.

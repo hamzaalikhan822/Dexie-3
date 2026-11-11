@@ -62,8 +62,8 @@ def rig(monkeypatch, off=(0.0, 0.0, 3.0), mode="OFFBOARD", rel_alt=5.0, frame_ag
     monkeypatch.setitem(sys.modules, "mavsdk.offboard", SimpleNamespace(VelocityBodyYawspeed=Vel))
     monkeypatch.setattr(mission, "time", SimpleNamespace(monotonic=lambda: clk[0]))
     monkeypatch.setattr(mission.asyncio, "sleep", sleep)
-    monkeypatch.setattr(mission, "marker_offset", lambda *a: off)
-    args = SimpleNamespace(kp=0.5, vmax=0.3, cam_yaw=0.0, marker_id=0, marker_size=0.35)
+    monkeypatch.setattr(mission, "marker_offset", lambda *a, **k: off)
+    args = SimpleNamespace(kp=0.5, vmax=0.3, cam_yaw=0.0, marker_id=0, marker_size=0.35, dict=0)
     drone = SimpleNamespace(offboard=SimpleNamespace(set_velocity_body=set_velocity_body))
     frames = SimpleNamespace(get=lambda: (object(), clk[0] - frame_age))
     return args, drone, frames, t, sent
@@ -179,3 +179,10 @@ def test_rosbridge_frame_decodes_jpeg_and_ignores_other_ops():
     out = mission.rosbridge_frame(msg)
     assert out.shape == (8, 8, 3) and out[4, 4, 2] > 200 and out[4, 4, 0] < 50
     assert mission.rosbridge_frame({"op": "status"}) is None
+
+
+def test_parse_args_resolves_dexi_pad_defaults():
+    import cv2
+    a = mission.parse_args([])
+    assert a.dict == cv2.aruco.DICT_APRILTAG_36h11 and a.marker_size == 0.14 and a.marker_id == 0
+    assert a.acquire_alt == 1.5

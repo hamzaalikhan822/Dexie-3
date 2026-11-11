@@ -46,16 +46,18 @@ class App:
                 ("topic", "Camera topic", "/cam0/image_raw/compressed"),
                 ("camera", "camera.yaml", "camera.yaml"),
                 ("alt", "Altitude m", "5"),
+                ("acquire_alt", "Acquire alt m", "1.5"),
                 ("kp", "Kp", "0.5"),
                 ("cam_yaw", "Cam yaw deg", "0"),
-                ("marker_size", "Marker size m", "0.35")]):
+                ("marker_size", "Tag size m", "0.14"),
+                ("dict", "Tag dictionary", "DICT_APRILTAG_36h11")]):
             ttk.Label(form, text=label).grid(row=i, column=0, sticky="w")
             e = ttk.Entry(form, width=28)
             e.insert(0, default)
             e.grid(row=i, column=1, pady=1)
             self.fields[key] = e
         self.connect_btn = ttk.Button(form, text="Connect", command=self.connect)
-        self.connect_btn.grid(row=8, column=0, columnspan=2, pady=4, sticky="ew")
+        self.connect_btn.grid(row=10, column=0, columnspan=2, pady=4, sticky="ew")
 
         self.status = tk.Label(self.root, justify="left", anchor="nw", font=("Consolas", 10),
                                text="not connected")
@@ -98,8 +100,8 @@ class App:
         f = {k: e.get() for k, e in self.fields.items()}
         return mission.parse_args([
             "--url", f["url"], "--rtsp", f["rtsp"], "--topic", f["topic"], "--camera", f["camera"],
-            "--alt", f["alt"], "--kp", f["kp"], "--cam-yaw", f["cam_yaw"],
-            "--marker-size", f["marker_size"]])
+            "--alt", f["alt"], "--acquire-alt", f["acquire_alt"], "--kp", f["kp"],
+            "--cam-yaw", f["cam_yaw"], "--marker-size", f["marker_size"], "--dict", f["dict"]])
 
     # --- buttons ---------------------------------------------------------
     def connect(self):
@@ -177,8 +179,8 @@ class App:
             if frame is not None:
                 try:
                     a = self.args()
-                    off = marker_offset(frame, self.K, self.dist, a.marker_id, a.marker_size)
-                except (ValueError, SystemExit):  # argparse exits on a bad field
+                    off = marker_offset(frame, self.K, self.dist, a.marker_id, a.marker_size, a.dict)
+                except (ValueError, SystemExit, AttributeError):  # bad field or unknown dictionary
                     off, a = None, None
                     lines.append("check the fields")
                 lines.append(f"frame  {time.monotonic() - stamp:.2f} s old")

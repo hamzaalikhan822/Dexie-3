@@ -15,6 +15,10 @@ def test_window_renders_frame_and_marker_readout():
     except tk.TclError as ex:  # no display
         pytest.skip(str(ex))
     app.K, app.dist = K, DIST
+    app.fields["dict"].delete(0, "end")
+    app.fields["dict"].insert(0, "DICT_4X4_50")  # synthetic_frame draws a 4x4 marker
+    app.fields["marker_size"].delete(0, "end")
+    app.fields["marker_size"].insert(0, "0.35")
     frame = synthetic_frame(cx=420)
     app.frames = type("F", (), {"get": staticmethod(lambda: (frame, time.monotonic()))})()
     app.log("hello")

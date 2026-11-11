@@ -28,13 +28,18 @@ def parse_args(argv=None):
     p.add_argument("--topic", default="/cam0/image_raw/compressed", help="ROS 2 topic for ws:// sources")
     p.add_argument("--camera", default="camera.yaml")
     p.add_argument("--marker-id", type=int, default=0)
-    p.add_argument("--marker-size", type=float, default=0.35)
+    p.add_argument("--marker-size", type=float, default=0.14, help="outer black square, metres")
+    p.add_argument("--dict", default="DICT_APRILTAG_36h11", help="cv2.aruco dictionary name")
     p.add_argument("--alt", type=float, default=5.0)
+    p.add_argument("--acquire-alt", type=float, default=1.5,
+                   help="after the 360, return to this height over the takeoff spot before looking for the tag")
     p.add_argument("--kp", type=float, default=0.5)
     p.add_argument("--vmax", type=float, default=0.3)
     p.add_argument("--cam-yaw", type=float, default=0.0, help="deg, camera image-up vs nose")
     p.add_argument("--dry", action="store_true", help="connect and print offsets, never arm")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    args.dict = getattr(cv2.aruco, args.dict)
+    return args
 
 
 def rosbridge_frame(msg):
@@ -221,7 +226,7 @@ async def centre_and_descend(args, drone, frames, K, dist, t, descend):
         check_offboard(t)
         frame, stamp = frames.get()
         off = (None if frame is None or time.monotonic() - stamp > 1.0
-               else marker_offset(frame, K, dist, args.marker_id, args.marker_size))
+               else marker_offset(frame, K, dist, args.marker_id, args.marker_size, args.dict))
         now = time.monotonic()
         if not descend and now - start > 30:
             raise RuntimeError("centre timed out")
@@ -260,7 +265,7 @@ async def fly(args, drone, frames, K, dist, ctl=None):
             await asyncio.sleep(1)
         frame, stamp = frames.get()
         if (frame is None or time.monotonic() - stamp > 1.0
-                or marker_offset(frame, K, dist, args.marker_id, args.marker_size) is None):
+                or marker_offset(frame, K, dist, args.marker_id, args.marker_size, args.dict) is None):
             raise RuntimeError("marker not visible on the ground; aborting before arm")
 
         # 2. takeoff
@@ -306,6 +311,17 @@ async def fly(args, drone, frames, K, dist, ctl=None):
             await asyncio.sleep(0.1)
         log(f"rotation done, heading {t.yaw:.0f} deg (delta {heading_delta(start_yaw, t.yaw):.0f})")
 
+        # 3b. the 14 cm tag is invisible from 5 m: come back down over the takeoff spot on PX4's
+        # local position estimate until the tag is detectable
+        t0 = time.monotonic()
+        while abs(t.rel_alt - args.acquire_alt) > 0.2:
+            check_offboard(t)
+            if time.monotonic() - t0 > 30:
+                raise RuntimeError("descent to acquire altitude timed out")
+            await drone.offboard.set_position_ned(PositionNedYaw(n, e, -args.acquire_alt, start_yaw))
+            await asyncio.sleep(0.1)
+        log(f"at acquire altitude {t.rel_alt:.2f} m, looking for the tag")
+
         # 4. centre, 5. descend
         if args.kp > 0:
             await centre_and_descend(args, drone, frames, K, dist, t, descend=False)
@@ -346,7 +362,7 @@ async def dry_run(args, drone, frames, K, dist):
     log("DRY: not arming. Ctrl-C to stop.")
     while True:
         frame, stamp = frames.get()
-        off = None if frame is None else marker_offset(frame, K, dist, args.marker_id, args.marker_size)
+        off = None if frame is None else marker_offset(frame, K, dist, args.marker_id, args.marker_size, args.dict)
         age = time.monotonic() - stamp if stamp else float("inf")
         if off is None:
             log(f"frame age {age:.2f}s  marker: not seen")

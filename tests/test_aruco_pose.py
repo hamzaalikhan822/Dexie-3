@@ -42,3 +42,13 @@ def test_missing_marker_returns_none():
 
 def test_wrong_id_returns_none():
     assert marker_offset(synthetic_frame(), K, DIST, 7, 0.35) is None
+
+
+def test_apriltag_36h11_dictionary_detects_dexi_pad_pattern():
+    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+    marker = cv2.aruco.generateImageMarker(d, 0, MARKER_PX)
+    frame = np.full((480, 640), 255, dtype=np.uint8)
+    frame[140:140 + MARKER_PX, 220:220 + MARKER_PX] = marker
+    x, y, z = marker_offset(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR), K, DIST, 0, 0.14,
+                            cv2.aruco.DICT_APRILTAG_36h11)
+    assert abs(z - FX * 0.14 / MARKER_PX) < 0.03
