@@ -29,11 +29,12 @@ class App:
         self.K = self.dist = None
         self.ctl = {"abort": "land"}
         self.kill_armed_at = 0.0
-        self.photo = None
         self.logq = queue.Queue()
         mission.log = self.log
 
-        self.video = tk.Label(self.root, bg="black", width=VIEW_W, height=480)
+        # a Label sizes in characters unless it holds an image; start with a blank one
+        self.photo = tk.PhotoImage(width=VIEW_W, height=480)
+        self.video = tk.Label(self.root, bg="black", image=self.photo)
         self.video.grid(row=0, column=0, rowspan=3, padx=4, pady=4)
 
         form = ttk.Frame(self.root)
