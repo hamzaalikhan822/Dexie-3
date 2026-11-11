@@ -163,3 +163,19 @@ def test_abort_land_failing_twice_logs_hold(monkeypatch):
     assert asyncio.run(mission.abort_action(drone, "land")) is False
     assert calls == ["stop", "land", "land"]
     assert logged == ["VEHICLE IN HOLD - PILOT TAKE OVER"]
+
+
+# --- rosbridge frame decode -------------------------------------------------
+
+def test_rosbridge_frame_decodes_jpeg_and_ignores_other_ops():
+    import base64
+    import cv2
+    import numpy as np
+    img = np.zeros((8, 8, 3), np.uint8)
+    img[:, :, 2] = 255  # red in BGR
+    jpeg = cv2.imencode(".jpg", img)[1].tobytes()
+    msg = {"op": "publish", "topic": "/cam0/image_raw/compressed",
+           "msg": {"format": "jpeg", "data": base64.b64encode(jpeg).decode()}}
+    out = mission.rosbridge_frame(msg)
+    assert out.shape == (8, 8, 3) and out[4, 4, 2] > 200 and out[4, 4, 0] < 50
+    assert mission.rosbridge_frame({"op": "status"}) is None

@@ -1,16 +1,19 @@
 """DEXI 3 precision landing from a laptop over MAVSDK.
 
-python mission.py --rtsp rtsp://<voxl-ip>:8900/hires --dry      # never arms
-python mission.py --rtsp rtsp://<voxl-ip>:8900/hires --alt 2 --kp 0
-python mission.py --rtsp rtsp://<voxl-ip>:8900/hires --alt 5
+python mission.py --dry                 # never arms; DEXI 3 defaults below
+python mission.py --alt 2 --kp 0
+python mission.py --alt 5
 """
 import argparse
 import asyncio
+import base64
+import json
 import math
 import threading
 import time
 
 import cv2
+import numpy as np
 
 from aruco_pose import load_camera, marker_offset
 
@@ -19,8 +22,10 @@ log = print  # ui.py replaces this to show mission output in the window
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="udp://:14540")
-    p.add_argument("--rtsp", required=True)
+    p.add_argument("--url", default="udpout://192.168.4.1:14540", help="mavlink-router MAVSDK endpoint")
+    p.add_argument("--rtsp", default="ws://192.168.4.1:9090",
+                   help="camera source: ws://host:9090 (rosbridge) or any cv2.VideoCapture URL")
+    p.add_argument("--topic", default="/cam0/image_raw/compressed", help="ROS 2 topic for ws:// sources")
     p.add_argument("--camera", default="camera.yaml")
     p.add_argument("--marker-id", type=int, default=0)
     p.add_argument("--marker-size", type=float, default=0.35)
@@ -32,21 +37,52 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-class LatestFrame(threading.Thread):
-    """Keeps only the newest RTSP frame so the control loop never reads stale video."""
+def rosbridge_frame(msg):
+    """Decode a rosbridge CompressedImage publish message to a BGR frame, or None."""
+    if msg.get("op") != "publish":
+        return None
+    buf = np.frombuffer(base64.b64decode(msg["msg"]["data"]), np.uint8)
+    return cv2.imdecode(buf, cv2.IMREAD_COLOR)
 
-    def __init__(self, url):
+
+class LatestFrame(threading.Thread):
+    """Keeps only the newest camera frame so the control loop never reads stale video.
+
+    url ws://host:9090 subscribes to `topic` over rosbridge (DEXI OS has no RTSP server);
+    anything else is opened with cv2.VideoCapture.
+    """
+
+    def __init__(self, url, topic="/cam0/image_raw/compressed"):
         super().__init__(daemon=True)
-        self.cap = cv2.VideoCapture(url)
+        self.url, self.topic = url, topic
         self.lock = threading.Lock()
         self.frame, self.stamp = None, 0.0
 
+    def _put(self, f):
+        if f is not None:
+            with self.lock:
+                self.frame, self.stamp = f, time.monotonic()
+
     def run(self):
+        if self.url.startswith("ws://"):
+            import websocket  # websocket-client
+            while True:
+                try:
+                    ws = websocket.create_connection(self.url, timeout=5)
+                    ws.send(json.dumps({"op": "subscribe", "topic": self.topic,
+                                        "type": "sensor_msgs/msg/CompressedImage",
+                                        "queue_length": 1, "throttle_rate": 100}))
+                    while True:
+                        self._put(rosbridge_frame(json.loads(ws.recv())))
+                except Exception as ex:  # reconnect; a dead stream shows as stale frames
+                    log(f"camera stream: {ex!r}; reconnecting")
+                    time.sleep(1)
+        cap = cv2.VideoCapture(self.url)
         while True:
-            ok, f = self.cap.read()
-            if ok:
-                with self.lock:
-                    self.frame, self.stamp = f, time.monotonic()
+            ok, f = cap.read()
+            self._put(f if ok else None)
+            if not ok:
+                time.sleep(0.01)
 
     def get(self):
         with self.lock:
@@ -324,7 +360,7 @@ async def dry_run(args, drone, frames, K, dist):
 async def main():
     args = parse_args()
     K, dist = load_camera(args.camera)
-    frames = LatestFrame(args.rtsp)
+    frames = LatestFrame(args.rtsp, args.topic)
     frames.start()
 
     drone = await connect(args.url)

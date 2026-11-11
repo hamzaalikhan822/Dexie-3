@@ -41,8 +41,9 @@ class App:
         form.grid(row=0, column=1, sticky="new", padx=4, pady=4)
         self.fields = {}
         for i, (key, label, default) in enumerate([
-                ("url", "MAVLink URL", "udp://:14540"),
-                ("rtsp", "RTSP URL", "rtsp://192.168.8.1:8900/hires"),
+                ("url", "MAVLink URL", "udpout://192.168.4.1:14540"),
+                ("rtsp", "Camera URL", "ws://192.168.4.1:9090"),
+                ("topic", "Camera topic", "/cam0/image_raw/compressed"),
                 ("camera", "camera.yaml", "camera.yaml"),
                 ("alt", "Altitude m", "5"),
                 ("kp", "Kp", "0.5"),
@@ -54,7 +55,7 @@ class App:
             e.grid(row=i, column=1, pady=1)
             self.fields[key] = e
         self.connect_btn = ttk.Button(form, text="Connect", command=self.connect)
-        self.connect_btn.grid(row=7, column=0, columnspan=2, pady=4, sticky="ew")
+        self.connect_btn.grid(row=8, column=0, columnspan=2, pady=4, sticky="ew")
 
         self.status = tk.Label(self.root, justify="left", anchor="nw", font=("Consolas", 10),
                                text="not connected")
@@ -96,7 +97,7 @@ class App:
     def args(self):
         f = {k: e.get() for k, e in self.fields.items()}
         return mission.parse_args([
-            "--url", f["url"], "--rtsp", f["rtsp"], "--camera", f["camera"],
+            "--url", f["url"], "--rtsp", f["rtsp"], "--topic", f["topic"], "--camera", f["camera"],
             "--alt", f["alt"], "--kp", f["kp"], "--cam-yaw", f["cam_yaw"],
             "--marker-size", f["marker_size"]])
 
@@ -104,7 +105,7 @@ class App:
     def connect(self):
         a = self.args()
         self.K, self.dist = load_camera(a.camera)
-        self.frames = mission.LatestFrame(a.rtsp)
+        self.frames = mission.LatestFrame(a.rtsp, a.topic)
         self.frames.start()
         self.connect_btn.configure(state="disabled")
 

@@ -1,6 +1,6 @@
 """One-off checkerboard calibration of the RTSP stream -> camera.yaml.
 
-Usage: python calibrate.py rtsp://<voxl-ip>:8900/hires --cols 9 --rows 6 --square 0.025
+Usage: python calibrate.py --cols 9 --rows 6 --square 0.025   (DEXI 3 rosbridge camera by default)
 Press SPACE to capture when corners are drawn, q to finish (needs >= 10 captures).
 """
 import argparse
@@ -8,6 +8,8 @@ import argparse
 import cv2
 import numpy as np
 import yaml
+
+from mission import LatestFrame
 
 
 def calibrate(objpoints, imgpoints, size):
@@ -23,7 +25,8 @@ def write_camera_yaml(path, result):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("rtsp")
+    p.add_argument("--rtsp", default="ws://192.168.4.1:9090", help="ws://host:9090 (rosbridge) or a cv2 URL")
+    p.add_argument("--topic", default="/cam0/image_raw/compressed")
     p.add_argument("--cols", type=int, default=9, help="inner corners across")
     p.add_argument("--rows", type=int, default=6, help="inner corners down")
     p.add_argument("--square", type=float, default=0.025, help="square size, metres")
@@ -33,12 +36,15 @@ def main():
     board = np.zeros((a.cols * a.rows, 3), np.float32)
     board[:, :2] = np.mgrid[0:a.cols, 0:a.rows].T.reshape(-1, 2) * a.square
     objpoints, imgpoints = [], []
-    cap = cv2.VideoCapture(a.rtsp)
+    frames = LatestFrame(a.rtsp, a.topic)
+    frames.start()
     size = None
     while True:
-        ok, frame = cap.read()
-        if not ok:
+        frame, _ = frames.get()
+        if frame is None:
+            cv2.waitKey(50)
             continue
+        frame = frame.copy()
         size = (frame.shape[1], frame.shape[0])
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         found, corners = cv2.findChessboardCorners(gray, (a.cols, a.rows))
@@ -55,7 +61,6 @@ def main():
             imgpoints.append(corners)
         elif key == ord("q"):
             break
-    cap.release()
     cv2.destroyAllWindows()
     if len(imgpoints) < 10:
         raise SystemExit(f"only {len(imgpoints)} captures, need >= 10")
