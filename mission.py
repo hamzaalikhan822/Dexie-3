@@ -111,24 +111,26 @@ class Telem:
     """Latest values from the MAVSDK telemetry streams, filled by background tasks."""
 
     def __init__(self, drone):
-        self.rel_alt = None
+        self.rel_alt = None      # metres above the EKF origin (boot spot); DEXI 3 has no GPS
         self.ned = None          # (north, east, down)
         self.yaw = None          # degrees
         self.mode = None
         self.in_air = None
         self.armed = None
+        self.local_ok = None     # PX4 local position estimate valid (flow + range indoors)
         self.att_stamp = None    # monotonic time of the last attitude update
         self.tasks = [asyncio.create_task(c) for c in (
-            self._pos(drone), self._ned(drone), self._att(drone), self._mode(drone), self._air(drone),
-            self._armed(drone))]
-
-    async def _pos(self, d):
-        async for p in d.telemetry.position():
-            self.rel_alt = p.relative_altitude_m
+            self._ned(drone), self._att(drone), self._mode(drone), self._air(drone),
+            self._armed(drone), self._health(drone))]
 
     async def _ned(self, d):
         async for p in d.telemetry.position_velocity_ned():
             self.ned = (p.position.north_m, p.position.east_m, p.position.down_m)
+            self.rel_alt = -p.position.down_m
+
+    async def _health(self, d):
+        async for h in d.telemetry.health():
+            self.local_ok = h.is_local_position_ok
 
     async def _att(self, d):
         async for a in d.telemetry.attitude_euler():
@@ -148,7 +150,7 @@ class Telem:
             self.armed = a
 
     async def ready(self):
-        while None in (self.rel_alt, self.ned, self.yaw, self.mode, self.in_air, self.armed):
+        while None in (self.ned, self.yaw, self.mode, self.in_air, self.armed, self.local_ok):
             await asyncio.sleep(0.1)
 
 
@@ -252,12 +254,10 @@ async def fly(args, drone, frames, K, dist, ctl=None):
     armed = False
     try:
         # 1. connect and check
-        async for h in drone.telemetry.health():
-            if h.is_global_position_ok and h.is_home_position_ok:
-                break
-            log("waiting for position health...")
-            await asyncio.sleep(1)
         await t.ready()
+        while not t.local_ok:
+            log("waiting for PX4 local position (flow + range) to be valid...")
+            await asyncio.sleep(1)
         frame, stamp = frames.get()
         if (frame is None or time.monotonic() - stamp > 1.0
                 or marker_offset(frame, K, dist, args.marker_id, args.marker_size) is None):

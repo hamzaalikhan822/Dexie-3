@@ -164,7 +164,7 @@ class App:
         t = self.telem
         if t is not None:
             lines += [f"mode   {getattr(t.mode, 'name', '?')}",
-                      f"armed  {t.armed}   in air {t.in_air}",
+                      f"armed  {t.armed}   in air {t.in_air}   local pos {'OK' if t.local_ok else 'NOT ok'}",
                       f"alt    {t.rel_alt if t.rel_alt is None else f'{t.rel_alt:.2f} m'}",
                       f"link   {'LOST' if mission.link_lost(t) else 'ok'}"]
         elif self.drone is not None:

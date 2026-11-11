@@ -26,6 +26,8 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
    - Optional, to join your own Wi-Fi instead of the hotspot: on the Pi, `sudo dexi-wifi 'SSID' 'password'`,
      then replace 192.168.4.1 with the address your router gives it.
    - The stock DEXI 3 camera is forward-facing. This project needs it pointing down at the marker.
+   - DEXI 3 has no GPS. Altitude comes from PX4's local estimate (optical flow + downward range
+     sensor) and the mission only arms once PX4 reports "local position OK", shown in the window.
 4. Calibrate once, at the same stream resolution the mission uses:
    `python calibrate.py --cols 9 --rows 6 --square 0.025`
    Capture ~20 frames with the board at different tilts and positions. Reprojection error should be < 1 px.
