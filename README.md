@@ -37,6 +37,14 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
    window shows; they should agree within a few cm. A full calibration with a printed checkerboard
    (`python calibrate.py --cols 9 --rows 6 --square 0.022`) also models lens distortion.
 
+### Optical-flow orientation (check on every unit)
+
+With the drone held ~50 cm over a textured floor and moved 1 m forward, PX4's local position must
+move +1 m forward (and +1 m right for a right move). On the DEXI 3 used here both axes read
+inverted with the shipped `SENS_FLOW_ROT` = 4 (180°); the camera was also mounted 180° from the
+expected orientation. Setting `SENS_FLOW_ROT` = 0 fixed it. A wrong value makes Position mode run
+away (positive feedback), which looks like violent drift on takeoff.
+
 ### PX4 failsafe
 
 Set `COM_OF_LOSS_T` (offboard loss timeout, e.g. 1 s) and `COM_OBL_RC_ACT` so that offboard loss with RC
