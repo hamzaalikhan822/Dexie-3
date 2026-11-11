@@ -30,7 +30,7 @@ def parse_args(argv=None):
     p.add_argument("--marker-id", type=int, default=0)
     p.add_argument("--marker-size", type=float, default=0.14, help="outer black square, metres")
     p.add_argument("--dict", default="DICT_APRILTAG_36h11", help="cv2.aruco dictionary name")
-    p.add_argument("--alt", type=float, default=5.0)
+    p.add_argument("--alt", type=float, default=2.0, help="indoor-safe default; raise only with a clear ceiling")
     p.add_argument("--acquire-alt", type=float, default=1.5,
                    help="after the 360, return to this height over the takeoff spot before looking for the tag")
     p.add_argument("--kp", type=float, default=0.5)
@@ -272,22 +272,30 @@ async def fly(args, drone, frames, K, dist, ctl=None):
         if frame is None or time.monotonic() - stamp > 1.0:
             raise RuntimeError("camera stream not live; aborting before arm")
 
-        # 2. takeoff
-        await drone.param.set_param_float("MIS_TAKEOFF_ALT", args.alt)
-        armed = True
-        await drone.action.arm()
-        await drone.action.takeoff()
-        climb_start = time.monotonic()
-        while abs(t.rel_alt - args.alt) > 0.3:
-            if t.mode.name in MANUAL or t.mode.name in FAILSAFE:
-                raise PilotTookOver(f"flight mode is {t.mode.name}")
-            if time.monotonic() - climb_start > 30:
-                raise RuntimeError("takeoff timed out")
-            await asyncio.sleep(0.2)
-        log(f"at {t.rel_alt:.1f} m")
+        # 2. takeoff, or take over from a pilot hover (flow-only PX4 often refuses position
+        #    modes on the ground but accepts them once airborne)
+        if t.in_air:
+            if t.mode.name not in ("POSCTL", "ALTCTL", "HOLD"):
+                raise RuntimeError(f"airborne in {t.mode.name}; hover in Position mode first")
+            log(f"airborne at {t.rel_alt:.2f} m in {t.mode.name}: taking over from the hover")
+            armed = True
+        else:
+            await drone.param.set_param_float("MIS_TAKEOFF_ALT", args.alt)
+            armed = True
+            await drone.action.arm()
+            await drone.action.takeoff()
+            climb_start = time.monotonic()
+            while abs(t.rel_alt - args.alt) > 0.3:
+                if t.mode.name in MANUAL or t.mode.name in FAILSAFE:
+                    raise PilotTookOver(f"flight mode is {t.mode.name}")
+                if time.monotonic() - climb_start > 30:
+                    raise RuntimeError("takeoff timed out")
+                await asyncio.sleep(0.2)
+            log(f"at {t.rel_alt:.1f} m")
 
-        # 3. rotate 360
-        n, e, d = t.ned
+        # 3. offboard: hold the current spot, climb to --alt, then rotate 360
+        n, e, _ = t.ned
+        d = -args.alt
         start_yaw = t.yaw
         await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, start_yaw))
         try:
@@ -302,6 +310,14 @@ async def fly(args, drone, frames, K, dist, ctl=None):
             await asyncio.sleep(0.1)
         else:
             raise RuntimeError(f"never entered OFFBOARD, mode is {t.mode.name}")
+        t0 = time.monotonic()
+        while abs(t.rel_alt - args.alt) > 0.3:
+            check_offboard(t)
+            if time.monotonic() - t0 > 30:
+                raise RuntimeError("climb to altitude timed out")
+            await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, start_yaw))
+            await asyncio.sleep(0.1)
+        log(f"at {t.rel_alt:.2f} m, rotating")
         turned = 0.0
         while turned < 360:
             check_offboard(t)

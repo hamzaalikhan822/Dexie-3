@@ -9,7 +9,7 @@ import queue
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import cv2
 
@@ -47,7 +47,7 @@ class App:
                 ("rtsp", "Camera URL", "ws://192.168.4.1:9090"),
                 ("topic", "Camera topic", "/cam0/image_raw/compressed"),
                 ("camera", "camera.yaml", "camera.yaml"),
-                ("alt", "Altitude m", "5"),
+                ("alt", "Altitude m", "2"),
                 ("acquire_alt", "Acquire alt m", "1.5"),
                 ("kp", "Kp", "0.5"),
                 ("cam_yaw", "Cam yaw deg", "180"),
@@ -122,6 +122,10 @@ class App:
         if self.drone is None or self.task is not None:
             return
         a = self.args()
+        if not messagebox.askokcancel("Start mission",
+                                      f"Climb to {a.alt:.1f} m, rotate 360, return to {a.acquire_alt:.1f} m, "
+                                      f"land on the tag (Kp {a.kp}).\n\nIs the ceiling clear above {a.alt:.1f} m?"):
+            return
         self.ctl["abort"] = "land"
 
         async def go():

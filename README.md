@@ -56,6 +56,20 @@ moment, mission running or not:
 Pressing any of them also cancels a running mission. The RC pilot's switch still overrides
 everything.
 
+## Taking off
+
+PX4 with optical flow only (no GPS) often refuses Position, Takeoff and Offboard modes while the
+drone is on the ground ("Preflight Fail: horizontal velocity unstable") and accepts them once it
+is airborne. So the normal procedure on DEXI 3 is a **pilot-assisted takeoff**:
+
+1. Pilot arms in Stabilized or Altitude mode and lifts off by hand to about 1 m over the pad.
+2. Pilot switches to Position mode. The drone should hold position on its own.
+3. Press `Start mission`. The script sees the drone airborne in Position mode and takes over:
+   Offboard, climb to Altitude, 360°, return to the acquire altitude, centre on the tag, land, disarm.
+
+If `Start mission` is pressed with the drone on the ground, it tries the automatic takeoff instead
+(arm + PX4 Takeoff mode), which only works if PX4's pre-arm checks pass on the ground.
+
 ## Flight test order
 
 Each step needs an RC pilot on the sticks with a mode switch set to Position mode. Switching mode
@@ -66,9 +80,10 @@ at any time kicks PX4 out of OFFBOARD; the script notices and exits. Before each
    forward: only `fwd` must change, and go negative. On the DEXI 3 used here the camera is mounted
    rotated 180° (both went positive at 0), so the default `--cam-yaw` is 180. If your readings differ,
    try 0, 90 or -90 until both are correct, and keep that value for every run.
-3. `python mission.py --alt 2 --kp 0` : takeoff, yaw, straight descent, land.
-4. `python mission.py --alt 2` : full loop at 2 m.
-5. `python mission.py --alt 5` : the real thing.
+3. Pilot hovers at 1 m in Position mode, then `python mission.py --alt 2 --kp 0` (or the window with
+   Altitude 2, Kp 0): climb, yaw, straight descent, land.
+4. Same with Kp 0.5: full loop at 2 m.
+5. `--alt 5`: the real thing.
 
 ## Safety behaviour
 
