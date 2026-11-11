@@ -12,7 +12,8 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
    taped flat. These are the defaults (`--dict DICT_APRILTAG_36h11 --marker-id 0 --marker-size 0.14`).
    A 14 cm tag is only detectable from about 2 m down with the 640x480 camera, so after the 360° the
    mission first returns to `--acquire-alt` (1.5 m) over the takeoff spot on PX4's position estimate,
-   then starts looking for the tag. A larger print of the same tag lets you raise that altitude.
+   then starts looking for the tag. On the ground the camera is 4 cm from the pad and cannot see
+   the tag, so there is no marker check before arming, only a live-stream check. A larger print of the same tag lets you raise that altitude.
 3. Connect to DEXI 3 (Raspberry Pi CM5 companion, DEXI OS):
    - Power the drone. Join its Wi-Fi hotspot `dexi_XXXX` (XXXX = last 4 of its MAC), password `droneblocks`.
    - The Pi is `192.168.4.1`. Dashboard: http://192.168.4.1 (check the camera shows there). SSH: `ssh dexi@192.168.4.1`, password `dexi`.

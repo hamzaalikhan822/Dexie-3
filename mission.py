@@ -266,10 +266,11 @@ async def fly(args, drone, frames, K, dist, ctl=None):
         while not t.armable:
             log("waiting for PX4 pre-arm checks to pass (see QGC / commander check for the reason)...")
             await asyncio.sleep(1)
+        # the camera sits 4 cm above the pad on the ground, so the tag cannot be seen before
+        # takeoff; only require a live stream here. The tag is acquired at --acquire-alt.
         frame, stamp = frames.get()
-        if (frame is None or time.monotonic() - stamp > 1.0
-                or marker_offset(frame, K, dist, args.marker_id, args.marker_size, args.dict) is None):
-            raise RuntimeError("marker not visible on the ground; aborting before arm")
+        if frame is None or time.monotonic() - stamp > 1.0:
+            raise RuntimeError("camera stream not live; aborting before arm")
 
         # 2. takeoff
         await drone.param.set_param_float("MIS_TAKEOFF_ALT", args.alt)
