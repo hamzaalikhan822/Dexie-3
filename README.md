@@ -26,7 +26,9 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
      then replace 192.168.4.1 with the address your router gives it.
    - The stock DEXI 3 camera is forward-facing. This project needs it pointing down at the marker.
    - DEXI 3 has no GPS. Altitude comes from PX4's local estimate (optical flow + downward range
-     sensor) and the mission only arms once PX4 reports "local position OK", shown in the window.
+     sensor). The mission arms only when PX4's own pre-arm check passes ("PX4 pre-arm OK" in the
+     window). Right after the drone is picked up or set down the check fails for a few seconds
+     ("horizontal velocity unstable"); let it sit still and it clears.
 4. Camera model: `python calibrate.py --nominal` writes `camera.yaml` with the focal length measured
    on DEXI 3 (878 px at 640x480: the stream is a tighter crop than the full sensor), centre at the
    image middle, no distortion. That is enough for the closed-loop landing. To check it on your unit:

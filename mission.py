@@ -123,7 +123,8 @@ class Telem:
         self.mode = None
         self.in_air = None
         self.armed = None
-        self.local_ok = None     # PX4 local position estimate valid (flow + range indoors)
+        self.local_ok = None     # MAVSDK's guess (GPS/flow health bits); informational only
+        self.armable = None      # PX4's own pre-arm check result; the arm gate
         self.att_stamp = None    # monotonic time of the last attitude update
         self.tasks = [asyncio.create_task(c) for c in (
             self._ned(drone), self._att(drone), self._mode(drone), self._air(drone),
@@ -137,6 +138,7 @@ class Telem:
     async def _health(self, d):
         async for h in d.telemetry.health():
             self.local_ok = h.is_local_position_ok
+            self.armable = h.is_armable
 
     async def _att(self, d):
         async for a in d.telemetry.attitude_euler():
@@ -156,7 +158,7 @@ class Telem:
             self.armed = a
 
     async def ready(self):
-        while None in (self.ned, self.yaw, self.mode, self.in_air, self.armed, self.local_ok):
+        while None in (self.ned, self.yaw, self.mode, self.in_air, self.armed, self.armable):
             await asyncio.sleep(0.1)
 
 
@@ -261,8 +263,8 @@ async def fly(args, drone, frames, K, dist, ctl=None):
     try:
         # 1. connect and check
         await t.ready()
-        while not t.local_ok:
-            log("waiting for PX4 local position (flow + range) to be valid...")
+        while not t.armable:
+            log("waiting for PX4 pre-arm checks to pass (see QGC / commander check for the reason)...")
             await asyncio.sleep(1)
         frame, stamp = frames.get()
         if (frame is None or time.monotonic() - stamp > 1.0
