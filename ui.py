@@ -30,6 +30,8 @@ class App:
         self.ctl = {"abort": "land"}
         self.kill_armed_at = 0.0
         self.logq = queue.Queue()
+        self.ticks = 0
+        self.last_off = None
         mission.log = self.log
 
         # a Label sizes in characters unless it holds an image; start with a blank one
@@ -179,7 +181,10 @@ class App:
             if frame is not None:
                 try:
                     a = self.args()
-                    off = marker_offset(frame, self.K, self.dist, a.marker_id, a.marker_size, a.dict)
+                    # detect at ~3 Hz: at 10 Hz the detector starves the MAVSDK telemetry thread
+                    if self.ticks % 3 == 0:
+                        self.last_off = marker_offset(frame, self.K, self.dist, a.marker_id, a.marker_size, a.dict)
+                    off = self.last_off
                 except (ValueError, SystemExit, AttributeError):  # bad field or unknown dictionary
                     off, a = None, None
                     lines.append("check the fields")
@@ -192,6 +197,7 @@ class App:
                     lines.append(f"cmd    fwd={fwd:+.2f} right={right:+.2f} m/s")
                 self.show(frame, off)
         self.status.configure(text="\n".join(lines))
+        self.ticks += 1
         self.root.after(100, self.tick)
 
     def show(self, frame, off):
