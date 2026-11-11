@@ -26,12 +26,25 @@ Set `COM_OF_LOSS_T` (offboard loss timeout, e.g. 1 s) and `COM_OBL_RC_ACT` so th
 present falls back to Position mode. If Wi-Fi drops, the script exits without sending commands; PX4's
 failsafe and the RC pilot take over.
 
+## Control window
+
+`python ui.py` opens a window with the live camera view, the marker readout (this replaces
+`--dry`), the mission fields, `Start mission`, and three emergency buttons that work at any
+moment, mission running or not:
+
+- **HOLD**: leaves offboard, PX4 holds position.
+- **LAND**: leaves offboard and lands where it is.
+- **KILL (motor cutoff)**: two clicks within 3 s. Cuts the motors at once; the drone falls.
+
+Pressing any of them also cancels a running mission. The RC pilot's switch still overrides
+everything.
+
 ## Flight test order
 
 Each step needs an RC pilot on the sticks with a mode switch set to Position mode. Switching mode
 at any time kicks PX4 out of OFFBOARD; the script notices and exits. Before each run, have the RC mode switch in Position mode and the vehicle in HOLD/Loiter, not in a manual mode, because the script treats a manual mode seen during the climb as a pilot takeover and exits.
 
-1. Bench: `python mission.py --rtsp <url> --dry`. Check frame age < 0.5 s and the marker is seen.
+1. Bench: `python mission.py --rtsp <url> --dry` (or `python ui.py` and Connect). Check frame age < 0.5 s and the marker is seen.
 2. Hand-held: lift the drone 1 m. Moving it right must make `right` negative; moving it forward must
    make `fwd` negative. If the wrong axis changes or a sign is wrong, try `--cam-yaw 90`, `-90` or `180`
    until both are correct. Keep that flag for every run.

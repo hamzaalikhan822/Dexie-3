@@ -113,3 +113,53 @@ def test_link_lost():
     assert mission.link_lost(SimpleNamespace(tasks=[SimpleNamespace(done=lambda: True)], att_stamp=now))
     assert mission.link_lost(SimpleNamespace(tasks=[], att_stamp=now - 3))
     assert mission.link_lost(SimpleNamespace(tasks=[], att_stamp=None))
+
+
+# --- abort_action ---------------------------------------------------------
+
+def fake_drone(land_fails=0):
+    calls = []
+
+    async def rec(name):
+        calls.append(name)
+
+    async def land():
+        calls.append("land")
+        if calls.count("land") <= land_fails:
+            raise RuntimeError("land refused")
+
+    drone = SimpleNamespace(
+        action=SimpleNamespace(kill=lambda: rec("kill"), land=land),
+        offboard=SimpleNamespace(stop=lambda: rec("stop")))
+    return drone, calls
+
+
+def test_abort_kill_cuts_motors_only():
+    drone, calls = fake_drone()
+    assert asyncio.run(mission.abort_action(drone, "kill")) is True
+    assert calls == ["kill"]
+
+
+def test_abort_hold_stops_offboard_only():
+    drone, calls = fake_drone()
+    assert asyncio.run(mission.abort_action(drone, "hold")) is True
+    assert calls == ["stop"]
+
+
+def test_abort_land_stops_then_lands():
+    drone, calls = fake_drone()
+    assert asyncio.run(mission.abort_action(drone, "land")) is True
+    assert calls == ["stop", "land"]
+
+
+def test_abort_land_failing_twice_logs_hold(monkeypatch):
+    logged = []
+    monkeypatch.setattr(mission, "log", logged.append)
+
+    async def no_sleep(dt):
+        pass
+    monkeypatch.setattr(mission.asyncio, "sleep", no_sleep)
+    drone, calls = fake_drone(land_fails=2)
+    assert asyncio.run(mission.abort_action(drone, "land")) is False
+    assert calls == ["stop", "land", "land"]
+    assert logged == ["VEHICLE IN HOLD - PILOT TAKE OVER"]
