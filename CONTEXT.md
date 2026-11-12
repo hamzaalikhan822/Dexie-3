@@ -40,7 +40,7 @@ at 640x480, measured on this unit).
 1. Wait for PX4's own pre-arm check (`health.is_armable`) and a live camera stream.
 2. If the drone is already airborne in Position, Altitude or Hold mode, take over from the pilot's
    hover. Otherwise arm and use PX4 Takeoff mode.
-3. Enter Offboard holding the current spot, slide up to `--alt`, yaw 360° at 10°/s.
+3. Enter Offboard holding the current spot, slide up to `--alt`, yaw 360° at 5°/s.
 4. Slide down to `--acquire-alt` (1.5 m) over the same spot, because the 14 cm tag is only
    detectable from about 2 m down.
 5. Centre on the tag with a proportional velocity command (skipped when `--kp 0`).

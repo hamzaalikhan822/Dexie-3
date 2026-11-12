@@ -361,7 +361,7 @@ async def fly(args, drone, frames, K, dist, ctl=None):
         turned = 0.0
         while turned < 360:
             check_offboard(t)
-            turned += 1
+            turned += 0.5  # 5 deg/s: a full turn takes 72 s
             await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, (start_yaw + turned) % 360))
             await asyncio.sleep(0.1)
         log(f"sweep done, measured yaw delta {heading_delta(start_yaw, t.yaw):.0f} deg")
