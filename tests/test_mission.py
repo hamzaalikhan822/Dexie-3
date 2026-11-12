@@ -186,3 +186,38 @@ def test_parse_args_resolves_dexi_pad_defaults():
     a = mission.parse_args([])
     assert a.dict == cv2.aruco.DICT_APRILTAG_36h11 and a.marker_size == 0.14 and a.marker_id == 0
     assert a.acquire_alt == 1.5
+
+
+# --- height above the floor and slow moves ----------------------------------
+
+def test_rel_alt_is_rezeroed_on_the_rangefinder():
+    t = mission.Telem.__new__(mission.Telem)
+    t.ned, t.gnd = (0.0, 0.0, -0.4), 0.0
+    assert t.rel_alt == pytest.approx(0.4)      # no range yet: height above the boot spot
+    t.gnd = t.ned[2] + 1.0                      # what _range stores for a 1.0 m reading
+    assert t.rel_alt == pytest.approx(1.0)
+    t.ned = (0.0, 0.0, -0.9)                    # climbed 0.5 m, sensor now out of range
+    assert t.rel_alt == pytest.approx(1.5)
+
+
+def test_step_toward_is_rate_limited_and_stops_on_target():
+    assert mission.step_toward(0.0, 1.0, 0.01) == pytest.approx(0.01)
+    assert mission.step_toward(0.0, -1.0, 0.01) == pytest.approx(-0.01)
+    assert mission.step_toward(0.0, 0.005, 0.01) == pytest.approx(0.005)
+
+
+def test_move_to_alt_slides_the_setpoint_at_vmax(monkeypatch):
+    args, drone, frames, fake, sent = rig(monkeypatch)
+    Pos = namedtuple("Pos", "n e d yaw")
+    monkeypatch.setitem(sys.modules, "mavsdk.offboard", SimpleNamespace(PositionNedYaw=Pos))
+    t = mission.Telem.__new__(mission.Telem)
+    t.mode, t.tasks, t.ned, t.gnd = fake.mode, [], (0.0, 0.0, -1.0), 0.0
+    monkeypatch.setattr(mission.Telem, "att_stamp", property(lambda s: fake.att_stamp), raising=False)
+
+    async def set_position_ned(p):
+        sent.append(p)
+        t.ned = (0.0, 0.0, p.d)  # vehicle tracks the setpoint perfectly
+    drone.offboard.set_position_ned = set_position_ned
+    asyncio.run(mission.move_to_alt(drone, t, 0.0, 0.0, 0.0, 1.05, vmax=0.1))
+    ds = [p.d for p in sent]
+    assert all(abs(b - a) <= 0.01 + 1e-9 for a, b in zip([-1.0] + ds, ds))  # 1 cm per 0.1 s tick

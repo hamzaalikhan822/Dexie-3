@@ -34,7 +34,8 @@ def parse_args(argv=None):
     p.add_argument("--acquire-alt", type=float, default=1.5,
                    help="after the 360, return to this height over the takeoff spot before looking for the tag")
     p.add_argument("--kp", type=float, default=0.5)
-    p.add_argument("--vmax", type=float, default=0.3)
+    p.add_argument("--vmax", type=float, default=0.1,
+                   help="m/s cap on every scripted move: climb, descent and centring")
     p.add_argument("--cam-yaw", type=float, default=180.0,
                    help="deg, camera image-up vs nose; 180 measured on DEXI 3 (both axes flipped)")
     p.add_argument("--dry", action="store_true", help="connect and print offsets, never arm")
@@ -117,8 +118,10 @@ class Telem:
     """Latest values from the MAVSDK telemetry streams, filled by background tasks."""
 
     def __init__(self, drone):
-        self.rel_alt = None      # metres above the EKF origin (boot spot); DEXI 3 has no GPS
-        self.ned = None          # (north, east, down)
+        self.ned = None          # (north, east, down), PX4 local frame; origin is the boot spot
+        self.gnd = 0.0           # local-frame "down" of the floor, measured by the rangefinder
+        self.rng = None          # last valid rangefinder reading, metres
+        self.rng_stamp = None    # monotonic time of that reading
         self.yaw = None          # degrees
         self.mode = None
         self.in_air = None
@@ -129,11 +132,31 @@ class Telem:
         self.tasks = [asyncio.create_task(c) for c in (
             self._ned(drone), self._att(drone), self._mode(drone), self._air(drone),
             self._armed(drone), self._health(drone))]
+        # not in tasks: a link without DISTANCE_SENSOR must not read as "link lost"
+        self.rng_task = asyncio.create_task(self._range(drone))
+
+    @property
+    def rel_alt(self):
+        """Metres above the floor: local Z re-zeroed on the rangefinder whenever it is in range.
+
+        Local Z alone is relative to wherever the EKF booted and drifts indoors.
+        """
+        return None if self.ned is None else self.gnd - self.ned[2]
+
+    @property
+    def rng_live(self):
+        return self.rng_stamp is not None and time.monotonic() - self.rng_stamp < 1.0
 
     async def _ned(self, d):
         async for p in d.telemetry.position_velocity_ned():
             self.ned = (p.position.north_m, p.position.east_m, p.position.down_m)
-            self.rel_alt = -p.position.down_m
+
+    async def _range(self, d):
+        async for r in d.telemetry.distance_sensor():
+            # at or beyond the limits the sensor reports a clamp value, not a height
+            if self.ned is not None and r.minimum_distance_m < r.current_distance_m < r.maximum_distance_m:
+                self.rng, self.rng_stamp = r.current_distance_m, time.monotonic()
+                self.gnd = self.ned[2] + r.current_distance_m
 
     async def _health(self, d):
         async for h in d.telemetry.health():
@@ -256,6 +279,28 @@ async def centre_and_descend(args, drone, frames, K, dist, t, descend):
         await asyncio.sleep(0.1)
 
 
+def step_toward(cur, target, max_step):
+    """cur moved toward target by at most max_step."""
+    return cur + max(-max_step, min(max_step, target - cur))
+
+
+async def move_to_alt(drone, t, n, e, yaw, alt, vmax, tol=0.2):
+    """Go to `alt` m above the floor at vmax by sliding the setpoint; a stepped setpoint
+    makes PX4 jump at its own speed limit. Returns the final local-frame down."""
+    from mavsdk.offboard import PositionNedYaw
+    d = t.ned[2]
+    t0 = time.monotonic()
+    limit = abs(alt - t.rel_alt) / vmax + 30
+    while abs(t.rel_alt - alt) > tol:
+        check_offboard(t)
+        if time.monotonic() - t0 > limit:
+            raise RuntimeError(f"move to {alt} m timed out at {t.rel_alt:.2f} m")
+        d = step_toward(d, t.gnd - alt, vmax * 0.1)
+        await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, yaw))
+        await asyncio.sleep(0.1)
+    return d
+
+
 async def fly(args, drone, frames, K, dist, ctl=None):
     from mavsdk.offboard import OffboardError, PositionNedYaw
     t = Telem(drone)
@@ -271,6 +316,8 @@ async def fly(args, drone, frames, K, dist, ctl=None):
         frame, stamp = frames.get()
         if frame is None or time.monotonic() - stamp > 1.0:
             raise RuntimeError("camera stream not live; aborting before arm")
+        log(f"height source: rangefinder ({t.rng:.2f} m)" if t.rng_live else
+            "height source: PX4 local Z only, NO live rangefinder reading; heights are relative to the boot spot")
 
         # 2. takeoff, or take over from a pilot hover (flow-only PX4 often refuses position
         #    modes on the ground but accepts them once airborne)
@@ -294,8 +341,7 @@ async def fly(args, drone, frames, K, dist, ctl=None):
             log(f"at {t.rel_alt:.1f} m")
 
         # 3. offboard: hold the current spot, climb to --alt, then rotate 360
-        n, e, _ = t.ned
-        d = -args.alt
+        n, e, d = t.ned
         start_yaw = t.yaw
         await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, start_yaw))
         try:
@@ -310,13 +356,7 @@ async def fly(args, drone, frames, K, dist, ctl=None):
             await asyncio.sleep(0.1)
         else:
             raise RuntimeError(f"never entered OFFBOARD, mode is {t.mode.name}")
-        t0 = time.monotonic()
-        while abs(t.rel_alt - args.alt) > 0.3:
-            check_offboard(t)
-            if time.monotonic() - t0 > 30:
-                raise RuntimeError("climb to altitude timed out")
-            await drone.offboard.set_position_ned(PositionNedYaw(n, e, d, start_yaw))
-            await asyncio.sleep(0.1)
+        d = await move_to_alt(drone, t, n, e, start_yaw, args.alt, args.vmax)
         log(f"at {t.rel_alt:.2f} m, rotating")
         turned = 0.0
         while turned < 360:
@@ -333,13 +373,7 @@ async def fly(args, drone, frames, K, dist, ctl=None):
 
         # 3b. the 14 cm tag is invisible from 5 m: come back down over the takeoff spot on PX4's
         # local position estimate until the tag is detectable
-        t0 = time.monotonic()
-        while abs(t.rel_alt - args.acquire_alt) > 0.2:
-            check_offboard(t)
-            if time.monotonic() - t0 > 30:
-                raise RuntimeError("descent to acquire altitude timed out")
-            await drone.offboard.set_position_ned(PositionNedYaw(n, e, -args.acquire_alt, start_yaw))
-            await asyncio.sleep(0.1)
+        await move_to_alt(drone, t, n, e, start_yaw, args.acquire_alt, args.vmax)
         log(f"at acquire altitude {t.rel_alt:.2f} m, looking for the tag")
 
         # 4. centre, 5. descend

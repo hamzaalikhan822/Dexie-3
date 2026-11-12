@@ -26,8 +26,11 @@ mavlink-router, video from the ROS 2 camera topic through rosbridge.
    - Optional, to join your own Wi-Fi instead of the hotspot: on the Pi, `sudo dexi-wifi 'SSID' 'password'`,
      then replace 192.168.4.1 with the address your router gives it.
    - The stock DEXI 3 camera is forward-facing. This project needs it pointing down at the marker.
-   - DEXI 3 has no GPS. Altitude comes from PX4's local estimate (optical flow + downward range
-     sensor). The mission arms only when PX4's own pre-arm check passes ("PX4 pre-arm OK" in the
+   - DEXI 3 has no GPS. Height above the floor is PX4's local Z re-zeroed on the downward
+     rangefinder (MAVLink `DISTANCE_SENSOR`) whenever that is in range; local Z alone is relative
+     to the boot spot and drifts. The window shows which source is live next to `alt`. If it says
+     "NO rangefinder", PX4 is not sending a usable reading: check `listener distance_sensor` in
+     the PX4 shell before flying. The mission arms only when PX4's own pre-arm check passes ("PX4 pre-arm OK" in the
      window). Right after the drone is picked up or set down the check fails for a few seconds
      ("horizontal velocity unstable"); let it sit still and it clears.
 4. Camera model: `python calibrate.py --nominal` writes `camera.yaml` with the focal length measured
@@ -98,4 +101,5 @@ at any time kicks PX4 out of OFFBOARD; the script notices and exits. Before each
 - Marker lost: sends zero velocity (the vehicle may drift). Lost > 10 s: lands where it is.
 - Any error or Ctrl-C: lands. If the pilot is in a manual mode, the script sends nothing.
 - If the land command fails, the vehicle is left in HOLD and the pilot must take over.
-- Velocities are clamped to `--vmax` (0.3 m/s) horizontally and downward.
+- Every scripted move (climb, descent, centring) is capped at `--vmax` (0.1 m/s; "Max speed" in
+  the window). Altitude changes slide the setpoint at that speed instead of stepping it.

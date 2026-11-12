@@ -50,6 +50,7 @@ class App:
                 ("alt", "Altitude m", "2"),
                 ("acquire_alt", "Acquire alt m", "1.5"),
                 ("kp", "Kp", "0.5"),
+                ("vmax", "Max speed m/s", "0.1"),
                 ("cam_yaw", "Cam yaw deg", "180"),
                 ("marker_size", "Tag size m", "0.14"),
                 ("dict", "Tag dictionary", "DICT_APRILTAG_36h11")]):
@@ -59,7 +60,7 @@ class App:
             e.grid(row=i, column=1, pady=1)
             self.fields[key] = e
         self.connect_btn = ttk.Button(form, text="Connect", command=self.connect)
-        self.connect_btn.grid(row=10, column=0, columnspan=2, pady=4, sticky="ew")
+        self.connect_btn.grid(row=len(self.fields), column=0, columnspan=2, pady=4, sticky="ew")
 
         self.status = tk.Label(self.root, justify="left", anchor="nw", font=("Consolas", 10),
                                text="not connected")
@@ -102,7 +103,7 @@ class App:
         f = {k: e.get() for k, e in self.fields.items()}
         return mission.parse_args([
             "--url", f["url"], "--rtsp", f["rtsp"], "--topic", f["topic"], "--camera", f["camera"],
-            "--alt", f["alt"], "--acquire-alt", f["acquire_alt"], "--kp", f["kp"],
+            "--alt", f["alt"], "--acquire-alt", f["acquire_alt"], "--kp", f["kp"], "--vmax", f["vmax"],
             "--cam-yaw", f["cam_yaw"], "--marker-size", f["marker_size"], "--dict", f["dict"]])
 
     # --- buttons ---------------------------------------------------------
@@ -124,7 +125,7 @@ class App:
         a = self.args()
         if not messagebox.askokcancel("Start mission",
                                       f"Climb to {a.alt:.1f} m, rotate 360, return to {a.acquire_alt:.1f} m, "
-                                      f"land on the tag (Kp {a.kp}).\n\nIs the ceiling clear above {a.alt:.1f} m?"):
+                                      f"land on the tag (Kp {a.kp}), all moves at {a.vmax} m/s.\n\nIs the ceiling clear above {a.alt:.1f} m?"):
             return
         self.ctl["abort"] = "land"
 
@@ -173,7 +174,8 @@ class App:
         if t is not None:
             lines += [f"mode   {getattr(t.mode, 'name', '?')}",
                       f"armed  {t.armed}   in air {t.in_air}   PX4 pre-arm {'OK' if t.armable else 'FAIL'}",
-                      f"alt    {t.rel_alt if t.rel_alt is None else f'{t.rel_alt:.2f} m'}",
+                      f"alt    {t.rel_alt if t.rel_alt is None else f'{t.rel_alt:.2f} m'}"
+                      f"  ({'rangefinder' if t.rng_live else 'PX4 local Z, NO rangefinder'})",
                       f"link   {'LOST' if mission.link_lost(t) else 'ok'}"]
         elif self.drone is not None:
             lines.append("connected, waiting for telemetry")
