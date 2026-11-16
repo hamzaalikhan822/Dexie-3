@@ -48,6 +48,18 @@ inverted with the shipped `SENS_FLOW_ROT` = 4 (180°); the camera was also mount
 expected orientation. Setting `SENS_FLOW_ROT` = 0 fixed it. A wrong value makes Position mode run
 away (positive feedback), which looks like violent drift on takeoff.
 
+### Sensor calibration and indoor limits
+
+`python px4_cal.py accel` (props off, hold on each of six sides), then `gyro`, then `level` with
+the drone still on a truly level surface. DEXI 3 has no magnetometer, so PX4's "magnetometer
+calibration not OK" flag is harmless.
+
+The vendor manual limits suit outdoor flying. On the DEXI 3 used here they were lowered on
+2026-11-14 (old value in brackets): `MPC_Z_VEL_MAX_UP` 1 m/s (3), `MPC_VEL_MANUAL` 1 m/s (4),
+`MPC_MAN_TILT_MAX` 15° (25). The mode switch (channel 6) is Stabilized / Position / Altitude;
+the third slot, `COM_FLTMODE6`, was Precision Land (13) and is now Altitude (1). Do not hover below about 0.3 m: the drone sits in its own ground
+effect and optical flow cannot focus under 8 cm, so it slides and Position mode has no velocity.
+
 ### PX4 failsafe
 
 Set `COM_OF_LOSS_T` (offboard loss timeout, e.g. 1 s) and `COM_OBL_RC_ACT` so that offboard loss with RC

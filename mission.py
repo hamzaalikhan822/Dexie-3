@@ -147,11 +147,21 @@ class Telem:
     def rng_live(self):
         return self.rng_stamp is not None and time.monotonic() - self.rng_stamp < 1.0
 
+    @staticmethod
+    async def _rate(setter, name):
+        # this link streams position at ~0.5 Hz and range at ~0.25 Hz unless asked; the loop runs at 10 Hz
+        try:
+            await setter(10.0)
+        except Exception as ex:
+            log(f"could not set the {name} rate: {ex!r}; height will lag")
+
     async def _ned(self, d):
+        await self._rate(d.telemetry.set_rate_position_velocity_ned, "position")
         async for p in d.telemetry.position_velocity_ned():
             self.ned = (p.position.north_m, p.position.east_m, p.position.down_m)
 
     async def _range(self, d):
+        await self._rate(d.telemetry.set_rate_distance_sensor, "rangefinder")
         async for r in d.telemetry.distance_sensor():
             # at or beyond the limits the sensor reports a clamp value, not a height
             if self.ned is not None and r.minimum_distance_m < r.current_distance_m < r.maximum_distance_m:
