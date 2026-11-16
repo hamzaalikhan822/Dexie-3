@@ -91,7 +91,11 @@ def main():
         board[:, :2] = np.mgrid[0:a.cols, 0:a.rows].T.reshape(-1, 2) * a.square
     objpoints, imgpoints = [], []
     last, last_centre = 0.0, None
-    frames = LatestFrame(a.rtsp, a.topic)
+    if a.rtsp.startswith("dji://"):  # Mini 3 through the phone relay
+        from dji_link import DjiLink
+        frames = DjiLink(a.rtsp[len("dji://"):])
+    else:
+        frames = LatestFrame(a.rtsp, a.topic)
     frames.start()
     size = None
     while True:
